@@ -19,10 +19,6 @@ For comparisons with other trackers, plus dataset context and evaluation details
 | SportsMOT | 73.0 | 72.5 | 96.4 |
 | SoccerNet | 84.0 | 78.1 | 97.8 |
 
-## Watch It in Action
-
-<iframe width="100%" style="aspect-ratio: 16/9;" src="https://www.youtube.com/embed/u0k2dTZ0vfs" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-
 ## Algorithm
 
 ByteTrack builds on the same Kalman filter and Hungarian algorithm framework as [SORT](sort.md) but changes how detections are associated to tracks. Instead of discarding low-confidence detections, ByteTrack uses a two-stage matching strategy that recovers valid objects the detector scored low due to occlusion, blur, or partial visibility.

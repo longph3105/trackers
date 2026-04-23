@@ -1,4 +1,5 @@
 ---
+title: Quickstart — Multi-Object Tracking in Python | Trackers
 comments: true
 description: Get started with Roboflow Trackers — install SORT, ByteTrack, and OC-SORT, run your first tracking pipeline, and evaluate results with HOTA, IDF1, and MOTA metrics.
 ---
@@ -9,7 +10,7 @@ description: Get started with Roboflow Trackers — install SORT, ByteTrack, and
 
 </div>
 
-Plug-and-play multi-object tracking for any detection model. Clean, modular implementations of SORT, ByteTrack, and OC-SORT under the Apache 2.0 license.
+Roboflow Trackers achieves 60.5 HOTA (ByteTrack) and 62.0 HOTA (OC-SORT) on MOT17, benchmarked across four standard datasets. Apache 2.0, Python 3.10+, 71K+ monthly PyPI installs.
 
 <video width="100%" controls autoplay muted loop>
   <source src="https://storage.googleapis.com/com-roboflow-marketing/trackers/docs/track-objects-page.mp4" type="video/mp4">
@@ -200,9 +201,10 @@ and any custom model. The tracker never inspects the detection model directly.
 
 **What MOT datasets does the library support?**
 
-MOT17, MOT20, SportsMOT, SoccerNet-tracking, and DanceTrack are supported for download and
-evaluation. Use `trackers download <dataset>` to pull frames, annotations, and pre-computed
-detections in one command. See the [download guide](learn/download.md) for asset options.
+MOT17 and SportsMOT are supported for download and evaluation. Use
+`trackers download <dataset>` to pull frames, annotations, and pre-computed
+detections in one command. DanceTrack and SoccerNet-tracking support is coming soon.
+See the [download guide](learn/download.md) for asset options.
 
 **How do I evaluate my tracker?**
 

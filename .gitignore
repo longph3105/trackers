@@ -175,3 +175,9 @@ logs/
 runs/
 wandb/
 .gradio/
+
+# AI tools
+*.local.*
+.developments/
+.reports/
+.temp/

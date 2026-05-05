@@ -116,12 +116,12 @@ class OCSORTTracker(BaseTracker):
             direction_consistency_matrix: Direction of the tracklet consistency cost matrix.
 
         Returns:
-            matched_indices: List of (track_index, detection_index) tuples for
-                successful associations that meet the IOU threshold.
-            unmatched_tracks: list of track indices that were not matched
-                to any detection.
-            unmatched_detections: list of detection indices that were not
-                matched to any track.
+            matched: List of ``(track_index, detection_index)`` tuples for
+                associations that meet the IoU threshold.
+            unmatched_tracks: Sorted list of track indices not matched to any
+                detection.
+            unmatched_detections: Sorted list of detection indices not matched
+                to any track.
         """  # noqa: E501
         matched_indices = []
         n_tracks, n_detections = iou_matrix.shape
@@ -158,7 +158,9 @@ class OCSORTTracker(BaseTracker):
                 )
             )
 
-    def update(self, detections: sv.Detections) -> sv.Detections:
+    def update(
+        self, detections: sv.Detections, frame: np.ndarray | None = None
+    ) -> sv.Detections:
         """Update tracker state with new detections and return tracked objects.
         Performs Kalman filter prediction, two-stage association using direction
         consistency and last-observation recovery, and initializes new tracks
@@ -168,11 +170,14 @@ class OCSORTTracker(BaseTracker):
             detections: `sv.Detections` containing bounding boxes with shape
                 `(N, 4)` in `(x_min, y_min, x_max, y_max)` format and optional
                 confidence scores.
+            frame: Ignored by OC-SORT. If provided (not `None`), a warning is
+                emitted.
 
         Returns:
-            `sv.Detections` with `tracker_id` assigned for each detection.
-                Unmatched or immature tracks have `tracker_id` of `-1`.
+            sv.Detections with tracker_id assigned for each detection.
+            Unmatched or immature tracks have tracker_id of -1.
         """
+        self._warn_if_frame_unused(frame)
         if len(self.tracks) == 0 and len(detections) == 0:
             result = sv.Detections.empty()
             result.tracker_id = np.array([], dtype=int)
@@ -282,7 +287,8 @@ class OCSORTTracker(BaseTracker):
         """Remove tracklets that have been lost for too long.
 
         Returns:
-            List of tracklets that are still active.
+            List of tracklets whose time_since_update has not exceeded
+            maximum_frames_without_update.
         """
         return [
             tracklet

@@ -96,6 +96,7 @@ class ByteTrackTracker(BaseTracker):
     def update(
         self,
         detections: sv.Detections,
+        frame: np.ndarray | None = None,
     ) -> sv.Detections:
         """Update tracks state with new detections and return tracked objects.
         Performs Kalman filter prediction, two-stage association (high then low
@@ -105,12 +106,15 @@ class ByteTrackTracker(BaseTracker):
             detections: `sv.Detections` containing bounding boxes with shape
                 `(N, 4)` in `(x_min, y_min, x_max, y_max)` format and optional
                 confidence scores.
+            frame: Ignored by ByteTrack. If provided (not `None`), a warning is
+                emitted.
 
         Returns:
-            `sv.Detections` with `tracker_id` assigned for each detection.
-                Unmatched detections have `tracker_id` of `-1`. Detection order
-                may differ from input.
+            sv.Detections with tracker_id assigned for each detection.
+            Unmatched detections have tracker_id of -1. Detection order may
+            differ from input.
         """
+        self._warn_if_frame_unused(frame)
         if len(self.tracks) == 0 and len(detections) == 0:
             result = sv.Detections.empty()
             result.tracker_id = np.array([], dtype=int)
@@ -222,8 +226,12 @@ class ByteTrackTracker(BaseTracker):
             min_similarity_thresh: Minimum similarity threshold for a valid match.
 
         Returns:
-            Matched indices (list of (tracker_idx, detection_idx)), indices of
-                unmatched tracks, indices of unmatched detections.
+            matched: List of ``(tracker_idx, detection_idx)`` tuples for
+                associations that meet the similarity threshold.
+            unmatched_tracks: Sorted list of track indices not matched to any
+                detection.
+            unmatched_detections: Sorted list of detection indices not matched
+                to any track.
         """  # noqa: E501
         matched_indices = []
         n_tracks, n_detections = similarity_matrix.shape

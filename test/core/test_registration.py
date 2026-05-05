@@ -7,6 +7,7 @@
 import inspect
 from typing import Any, ClassVar
 
+import numpy as np
 import pytest
 
 from trackers.core.base import (
@@ -16,6 +17,8 @@ from trackers.core.base import (
     _normalize_type,
     _parse_docstring_arguments,
 )
+
+from .shared_ids import ALL_TRACKER_IDS
 
 
 class TestParseDocstringArguments:
@@ -232,15 +235,25 @@ class TestExtractParamsFromInit:
 
 
 class TestTrackerAutoRegistration:
-    @pytest.mark.parametrize("tracker_id", ["bytetrack", "sort"])
+    @pytest.mark.parametrize("tracker_id", ALL_TRACKER_IDS)
     def test_tracker_is_registered(self, tracker_id: str) -> None:
-        from trackers import ByteTrackTracker, SORTTracker  # noqa: F401
+        from trackers import (  # noqa: F401
+            BoTSORTTracker,
+            ByteTrackTracker,
+            OCSORTTracker,
+            SORTTracker,
+        )
 
         assert tracker_id in BaseTracker._registered_trackers()
 
-    @pytest.mark.parametrize("tracker_id", ["bytetrack", "sort"])
+    @pytest.mark.parametrize("tracker_id", ALL_TRACKER_IDS)
     def test_lookup_tracker(self, tracker_id: str) -> None:
-        from trackers import ByteTrackTracker, SORTTracker  # noqa: F401
+        from trackers import (  # noqa: F401
+            BoTSORTTracker,
+            ByteTrackTracker,
+            OCSORTTracker,
+            SORTTracker,
+        )
 
         info = BaseTracker._lookup_tracker(tracker_id)
 
@@ -253,14 +266,19 @@ class TestTrackerAutoRegistration:
         assert info is None
 
     def test_registered_trackers_returns_sorted_list(self) -> None:
-        from trackers import ByteTrackTracker, SORTTracker  # noqa: F401
+        from trackers import (  # noqa: F401
+            BoTSORTTracker,
+            ByteTrackTracker,
+            OCSORTTracker,
+            SORTTracker,
+        )
 
         registered = BaseTracker._registered_trackers()
 
         assert isinstance(registered, list)
         assert registered == sorted(registered)
 
-    @pytest.mark.parametrize("tracker_id", ["bytetrack", "sort"])
+    @pytest.mark.parametrize("tracker_id", ALL_TRACKER_IDS)
     def test_tracker_params_have_descriptions(self, tracker_id: str) -> None:
         info = BaseTracker._lookup_tracker(tracker_id)
 
@@ -273,10 +291,20 @@ class TestSearchSpaceValidation:
     """Tests for search_space ClassVar validation in __init_subclass__."""
 
     def test_search_space_keys_match_init_params(self) -> None:
-        """ByteTrack, SORT, and OC-SORT search_space keys are valid __init__ params."""
-        from trackers import ByteTrackTracker, OCSORTTracker, SORTTracker
+        """Registered trackers' search_space keys are valid __init__ params."""
+        from trackers import (
+            BoTSORTTracker,
+            ByteTrackTracker,
+            OCSORTTracker,
+            SORTTracker,
+        )
 
-        for tracker_cls in (ByteTrackTracker, SORTTracker, OCSORTTracker):
+        for tracker_cls in (
+            ByteTrackTracker,
+            SORTTracker,
+            OCSORTTracker,
+            BoTSORTTracker,
+        ):
             init_params = set(inspect.signature(tracker_cls.__init__).parameters) - {
                 "self"
             }
@@ -302,7 +330,9 @@ class TestSearchSpaceValidation:
                 def __init__(self) -> None:
                     pass
 
-                def update(self, detections: Any) -> Any:
+                def update(
+                    self, detections: Any, frame: np.ndarray | None = None
+                ) -> Any:
                     return detections
 
                 def reset(self) -> None:
@@ -317,7 +347,7 @@ class TestSearchSpaceValidation:
             def __init__(self) -> None:
                 pass
 
-            def update(self, detections: Any) -> Any:
+            def update(self, detections: Any, frame: np.ndarray | None = None) -> Any:
                 return detections
 
             def reset(self) -> None:
@@ -339,7 +369,7 @@ class TestSearchSpaceValidation:
             def __init__(self, x: int = 1) -> None:
                 pass
 
-            def update(self, detections: Any) -> Any:
+            def update(self, detections: Any, frame: np.ndarray | None = None) -> Any:
                 return detections
 
             def reset(self) -> None:
@@ -370,6 +400,14 @@ class TestSearchSpaceValidation:
                 {"x": {"type": "uniform", "range": [1, 0]}},  # low >= high
                 r"must have low < high",
             ),
+            (
+                {"x": {"type": "choice"}},  # missing "options"
+                r"missing required key 'options'",
+            ),
+            (
+                {"x": {"type": "choice", "options": []}},  # empty options
+                r"non-empty",
+            ),
         ],
     )
     def test_invalid_search_space_value_schema_raises(
@@ -385,7 +423,9 @@ class TestSearchSpaceValidation:
                 def __init__(self, x: int = 0) -> None:
                     pass
 
-                def update(self, detections: Any) -> Any:  # type: ignore[override]
+                def update(
+                    self, detections: Any, frame: np.ndarray | None = None
+                ) -> Any:
                     return detections
 
                 def reset(self) -> None:
@@ -393,7 +433,7 @@ class TestSearchSpaceValidation:
 
 
 class TestTrackerInstantiation:
-    @pytest.mark.parametrize("tracker_id", ["bytetrack", "sort"])
+    @pytest.mark.parametrize("tracker_id", ALL_TRACKER_IDS)
     def test_instantiate_with_defaults(self, tracker_id: str) -> None:
         info = BaseTracker._lookup_tracker(tracker_id)
         assert info is not None

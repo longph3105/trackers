@@ -114,7 +114,12 @@ class SORTTracker(BaseTracker):
             detection_boxes: Detected bounding boxes in the form [x1, y1, x2, y2].
 
         Returns:
-            Matched indices, unmatched tracks, unmatched detections.
+            matched: List of ``(track_index, detection_index)`` tuples for
+                associations that meet the IoU threshold.
+            unmatched_tracks: Sorted list of track indices not matched to any
+                detection.
+            unmatched_detections: Sorted list of detection indices not matched
+                to any track.
         """
         matched_indices = []
         unmatched_tracklets = set(range(len(self.tracks)))
@@ -153,7 +158,9 @@ class SORTTracker(BaseTracker):
                 )
                 self.tracks.append(new_tracker)
 
-    def update(self, detections: sv.Detections) -> sv.Detections:
+    def update(
+        self, detections: sv.Detections, frame: np.ndarray | None = None
+    ) -> sv.Detections:
         """Update tracker state with new detections and return tracked objects.
         Performs Kalman filter prediction, IoU-based association, and initializes
         new tracks for unmatched high-confidence detections.
@@ -162,11 +169,13 @@ class SORTTracker(BaseTracker):
             detections: `sv.Detections` containing bounding boxes with shape
                 `(N, 4)` in `(x_min, y_min, x_max, y_max)` format and optional
                 confidence scores.
+            frame: Ignored by SORT. If provided (not `None`), a warning is emitted.
 
         Returns:
-            `sv.Detections` with `tracker_id` assigned for each detection.
-                Unmatched or immature tracks have `tracker_id` of `-1`.
+            sv.Detections with tracker_id assigned for each detection.
+            Unmatched or immature tracks have tracker_id of -1.
         """
+        self._warn_if_frame_unused(frame)
         if len(self.tracks) == 0 and len(detections) == 0:
             result = sv.Detections.empty()
             result.tracker_id = np.array([], dtype=int)

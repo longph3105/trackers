@@ -441,7 +441,7 @@ def _run_with_source(
                     detections = detections[mask]  # type: ignore[assignment]
 
                 # Run tracker
-                tracked = tracker.update(detections)
+                tracked = tracker.update(detections, frame)
 
                 # Filter by track ID
                 if track_id_filter is not None and len(tracked) > 0:

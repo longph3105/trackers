@@ -11,6 +11,7 @@ import supervision as sv
 from scipy.optimize import linear_sum_assignment
 
 from trackers.core.base import BaseTracker
+from trackers.core.botsort._cmc_xyxy import _xyxy_corner_min_max
 from trackers.core.botsort.cmc import CMC, CMCConfig, CMCTMethod
 from trackers.core.botsort.tracklet import BoTSORTTracklet
 from trackers.core.botsort.utils import _fuse_score, get_alive_tracklets
@@ -343,7 +344,19 @@ class BoTSORTTracker(BaseTracker):
         return result
 
     def apply_cmc_batch(self, H: np.ndarray | None) -> None:
-        """Apply a 2x3 affine camera-motion transform to all tracklets at once."""
+        """Apply a 2x3 affine camera-motion transform to all tracklets at once.
+
+        For XYXY-state tracks, positions and velocities are updated via
+        four-corner enclosure so that axis-alignment is preserved under
+        rotation, reflection, and shear. The covariance matrix ``P`` is
+        updated with the block-diagonal rotation matrix only when ``R`` is
+        axis-aligned (off-diagonals < 1e-6). When ``R`` has cross-axis terms,
+        ``P`` is left unchanged — a conservative choice that avoids applying an
+        invalid block-diagonal approximation at the cost of stale uncertainty.
+
+        For XCYCWH-state tracks, only the centre position and velocity are
+        rotated; width/height and their velocities are not transformed.
+        """
         if H is None or len(self.tracks) == 0:
             return
 
@@ -359,27 +372,50 @@ class BoTSORTTracker(BaseTracker):
         Ps = np.array([trk.state_estimator.kf.P for trk in self.tracks])
 
         if is_xyxy:
-            states[:, 0:2] = states[:, 0:2] @ R.T + t
-            states[:, 2:4] = states[:, 2:4] @ R.T + t
-            states[:, 4:6] = states[:, 4:6] @ R.T
-            states[:, 6:8] = states[:, 6:8] @ R.T
+            # XYXY boxes must remain axis-aligned after CMC. For transforms with
+            # rotation/reflection/shear, applying the affine matrix only to the
+            # top-left and bottom-right corners can invert the box or produce
+            # invalid geometry. Transform all four corners, then rebuild the
+            # enclosing axis-aligned box with per-axis min/max.
+            states[:, 0], states[:, 1], states[:, 2], states[:, 3] = (
+                _xyxy_corner_min_max(
+                    states[:, 0], states[:, 1], states[:, 2], states[:, 3], R, t
+                )
+            )
+            # Keep XYXY velocity ordering valid under mixed-axis transforms by
+            # applying the same corner-wise normalization to the paired velocity
+            # components.
+            states[:, 4], states[:, 5], states[:, 6], states[:, 7] = (
+                _xyxy_corner_min_max(
+                    states[:, 4], states[:, 5], states[:, 6], states[:, 7], R
+                )
+            )
         else:
             # Batch-transform centre positions: x' = x @ R.T + t
             states[:, 0:2] = states[:, 0:2] @ R.T + t
             # Batch-transform centre velocities: v' = v @ R.T
             states[:, 4:6] = states[:, 4:6] @ R.T
 
-        A = np.eye(dim, dtype=np.float64)
+        A = None
         if is_xyxy:
-            A[0:2, 0:2] = R
-            A[2:4, 2:4] = R
-            A[4:6, 4:6] = R
-            A[6:8, 6:8] = R
+            # atol=1e-6: float32 CMC (sparseOptFlow/ORB/SIFT/ECC) carries ~1e-7
+            # to 1e-6 residuals on off-diagonals even for pure-translation H;
+            # default atol=1e-8 misclassifies those as cross-axis transforms.
+            if np.isclose(R[0, 1], 0.0, atol=1e-6) and np.isclose(
+                R[1, 0], 0.0, atol=1e-6
+            ):
+                A = np.eye(dim, dtype=np.float64)
+                A[0:2, 0:2] = R
+                A[2:4, 2:4] = R
+                A[4:6, 4:6] = R
+                A[6:8, 6:8] = R
         else:
+            A = np.eye(dim, dtype=np.float64)
             A[0:2, 0:2] = R
             A[4:6, 4:6] = R
 
-        Ps = A @ Ps @ A.T
+        if A is not None:
+            Ps = A @ Ps @ A.T
 
         for i, trk in enumerate(self.tracks):
             trk.state_estimator.kf.x = states[i].reshape(-1, 1)

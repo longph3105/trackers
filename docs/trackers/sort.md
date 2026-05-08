@@ -22,7 +22,9 @@ For comparisons with other trackers, plus dataset context and evaluation details
 
 ## Watch It in Action
 
-<iframe title="SORT demo video" width="100%" style="aspect-ratio: 16/9;" src="https://github.com/user-attachments/assets/98c73178-cb7d-4cdd-88b0-fda68b09fd80" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+<video title="SORT demo video" width="100%" style="aspect-ratio: 16/9;" controls>
+  <source src="https://github.com/user-attachments/assets/98c73178-cb7d-4cdd-88b0-fda68b09fd80" type="video/mp4">
+</video>
 
 ## How does SORT work?
 

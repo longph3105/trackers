@@ -22,7 +22,9 @@ For comparisons with other trackers, plus dataset context and evaluation details
 
 ## Watch It in Action
 
-<iframe title="ByteTrack demo video" width="100%" style="aspect-ratio: 16/9;" src="https://github.com/user-attachments/assets/9c9736c9-ca78-48b3-b3c4-46d3e904dbb3" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+<video title="ByteTrack demo video" width="100%" style="aspect-ratio: 16/9;" controls>
+  <source src="https://github.com/user-attachments/assets/9c9736c9-ca78-48b3-b3c4-46d3e904dbb3" type="video/mp4">
+</video>
 
 ## How does ByteTrack work?
 

@@ -54,6 +54,14 @@ def _detection(xyxy: tuple[float, float, float, float]) -> sv.Detections:
     )
 
 
+def _detections(xyxy: list[tuple[float, float, float, float]]) -> sv.Detections:
+    return sv.Detections(
+        xyxy=np.array(xyxy, dtype=np.float32),
+        confidence=np.full(len(xyxy), 0.95, dtype=np.float32),
+        class_id=np.zeros(len(xyxy), dtype=int),
+    )
+
+
 def _no_confidence_detection(xyxy: tuple[float, float, float, float]) -> sv.Detections:
     return sv.Detections(
         xyxy=np.array([xyxy], dtype=np.float32),
@@ -330,6 +338,21 @@ def _run_until_confirmed(
     raise AssertionError("expected at least one confirmed track after warmup")
 
 
+def _run_until_n_confirmed(
+    tracker: BaseTracker,
+    detection: sv.Detections,
+    n: int,
+    max_steps: int = 8,
+) -> list[int]:
+    """Advance tracker until at least n confirmed tracks exist; return their IDs."""
+    for _ in range(max_steps):
+        tracker.update(detection)
+        ids = [int(t.tracker_id) for t in tracker.tracks if t.tracker_id >= 0]
+        if len(ids) >= n:
+            return ids
+    raise AssertionError(f"expected {n} confirmed tracks after {max_steps} steps")
+
+
 @pytest.mark.parametrize("tracker_id", ALL_TRACKER_IDS)
 def test_reset_clears_tracks_and_restarts_ids(tracker_id: str) -> None:
     """reset() must clear state and restart tracker IDs from zero."""
@@ -347,6 +370,50 @@ def test_reset_clears_tracks_and_restarts_ids(tracker_id: str) -> None:
     confirmed_ids = [t.tracker_id for t in tracker.tracks if t.tracker_id >= 0]
     assert len(confirmed_ids) > 0
     assert min(confirmed_ids) == 0
+
+
+@pytest.mark.parametrize("tracker_id", ALL_TRACKER_IDS)
+def test_tracker_instances_do_not_share_id_allocators(tracker_id: str) -> None:
+    """Resetting one tracker instance must not make another instance reuse a live ID."""
+    tracker_a = _instantiate(tracker_id, minimum_consecutive_frames=1)
+    tracker_b = _instantiate(tracker_id, minimum_consecutive_frames=1)
+    tracker_a.reset()
+
+    first_det = _detection((100.0, 100.0, 200.0, 200.0))
+    two_dets = _detections(
+        [
+            (100.0, 100.0, 200.0, 200.0),
+            (400.0, 400.0, 500.0, 500.0),
+        ]
+    )
+
+    _run_until_confirmed(tracker_a, first_det)
+    a_ids = [int(t.tracker_id) for t in tracker_a.tracks if t.tracker_id >= 0]
+    assert a_ids == [0]
+
+    tracker_b.reset()
+
+    # tracker_b must restart from 0, independent of tracker_a's counter
+    _run_until_confirmed(tracker_b, _detection((200.0, 200.0, 300.0, 300.0)))
+    b_ids = [int(t.tracker_id) for t in tracker_b.tracks if t.tracker_id >= 0]
+    assert b_ids == [0], f"tracker_b should restart from 0 independent of tracker_a, got {b_ids}"
+
+    # tracker_a must continue allocating unique IDs after tracker_b.reset()
+    a_ids = _run_until_n_confirmed(tracker_a, two_dets, n=2)
+    assert len(a_ids) == len(set(a_ids)), f"tracker_a IDs not unique after tracker_b.reset(): {a_ids}"
+
+
+def test_cbiou_monotonic_ids_within_single_session() -> None:
+    """CBIoUTracker must increment IDs monotonically within one session."""
+    tracker = _instantiate("cbiou", minimum_consecutive_frames=1)
+    two_dets = _detections(
+        [
+            (100.0, 100.0, 200.0, 200.0),
+            (400.0, 400.0, 500.0, 500.0),
+        ]
+    )
+    ids = _run_until_n_confirmed(tracker, two_dets, n=2)
+    assert sorted(ids) == [0, 1], f"expected IDs [0, 1] for first two cbiou tracks, got {ids}"
 
 
 # ==========================================================================

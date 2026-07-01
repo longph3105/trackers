@@ -128,6 +128,7 @@ class BoTSORTTracker(BaseTracker):
         # frame_rate. This scales the buffer based on the frame rate to ensure
         # consistent time-based tracking across different frame rates.
         self.maximum_frames_without_update = int(frame_rate / 30.0 * lost_track_buffer)
+        self.maximum_time_without_update: float = lost_track_buffer / 30.0
         self.minimum_consecutive_frames = minimum_consecutive_frames
         self.minimum_iou_threshold_first_assoc = minimum_iou_threshold_first_assoc
         self.minimum_iou_threshold_second_assoc = minimum_iou_threshold_second_assoc
@@ -144,10 +145,13 @@ class BoTSORTTracker(BaseTracker):
         self.enable_cmc = enable_cmc
         self.cmc = CMC(CMCConfig(method=cmc_method, downscale=cmc_downscale)) if enable_cmc else None
 
+        self._init_timestamp_state(frame_rate)
+
     def update(
         self,
         detections: sv.Detections,
         frame: np.ndarray | None = None,
+        timestamp: float | None = None,
     ) -> sv.Detections:
         """
         Update the tracker with detections from the current frame.
@@ -159,17 +163,32 @@ class BoTSORTTracker(BaseTracker):
                 ``.xyxy``. Confidence (`detections.confidence`) is optional but
                 recommended. This method does not mutate the input detections;
                 it returns a new ``sv.Detections`` with ``tracker_id`` assigned.
+            frame: Current video frame in BGR format (H, W, 3), or ``None``.
+                Used for camera motion compensation when ``enable_cmc=True``.
+            timestamp: Absolute time of the current frame in seconds, or ``None``
+                for fixed-rate mode (``frame_step = 1.0`` per call).
 
         Returns:
             New sv.Detections with tracker_id assigned for each detection.
             Confirmed tracks have tracker_id >= 0; unconfirmed tracks have
             tracker_id of -1.
 
+        Warns:
+            UserWarning: If ``timestamp`` is earlier than the previous call
+                (backwards order); the whole update is skipped and all output
+                IDs are ``-1``. If ``timestamp`` equals the previous call
+                (duplicate); predict is skipped but association still runs on
+                the last state.
+
         Notes:
             - If CMC is enabled, pass the current video frame via ``frame`` so the
               tracker can estimate a global affine transform and warp predicted
-              track states before association.
+              track states before association. When ``frame=None`` and
+              ``enable_cmc=True``, CMC is silently skipped for that step.
         """
+        timing = self._predict_timing(timestamp)
+        if timing.skip_update:
+            return self._detections_for_skipped_update(detections)
         self.frame_id += 1
 
         if len(self.tracks) == 0 and len(detections) == 0:
@@ -181,8 +200,12 @@ class BoTSORTTracker(BaseTracker):
         out_tracker_ids: list[int] = []
 
         # Predict new locations for existing tracks
-        for tracker in self.tracks:
-            tracker.predict()
+        self._predict_tracklets(self.tracks, timing)
+
+        # Ghost-ID prevention: budget-only filter before association.
+        # Keeps immature tracks alive for matching; full lifecycle prune runs after.
+        _budget = self._lost_track_time_budget(timing, self.maximum_time_without_update)
+        self._prune_lost_tracks(timing)
 
         detection_boxes = detections.xyxy
         confidences = default_confidences(detections)
@@ -306,11 +329,12 @@ class BoTSORTTracker(BaseTracker):
             is_first_frame=(self.frame_id == 1),
         )
 
-        # Kill lost tracks
+        # Full lifecycle prune: removes immature+unmatched and any remaining expired
         self.tracks = get_alive_tracklets(
             tracklets=self.tracks,
             maximum_frames_without_update=self.maximum_frames_without_update,
             minimum_consecutive_frames=self.minimum_consecutive_frames,
+            maximum_time_without_update=_budget,
         )
 
         # Build final detections
@@ -410,6 +434,7 @@ class BoTSORTTracker(BaseTracker):
         """
         self.tracks = []
         self.frame_id = 0
+        self._last_timestamp = None
         self._reset_id_allocator()
         if self.cmc is not None:
             self.cmc.reset()

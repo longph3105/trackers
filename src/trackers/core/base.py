@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import inspect
+import math
 import re
 import types
 import warnings
@@ -323,6 +324,51 @@ class BaseTracker(ABC):
     maximum_frames_without_update: int
     maximum_time_without_update: float | None
     _next_track_id: int
+
+    @staticmethod
+    def _compute_maximum_frames_without_update(
+        lost_track_buffer: int,
+        frame_rate: float,
+    ) -> int:
+        """Scale positive lost-track buffers without changing explicit zero-buffer configs.
+
+        Args:
+            lost_track_buffer: Non-negative buffer length expressed in 30 FPS frames.
+                Zero means no missed-frame grace period.
+            frame_rate: Actual video frame rate in frames per second. Must be
+                finite and strictly positive.
+
+        Returns:
+            Scaled maximum number of missed frames before a confirmed track expires.
+            Returns zero when ``lost_track_buffer`` is zero; otherwise returns
+            ``max(1, ceil(frame_rate / 30.0 * lost_track_buffer))`` to ensure at
+            least one frame of grace for any positive buffer at any frame rate.
+
+        Raises:
+            ValueError: If ``lost_track_buffer`` is negative.
+            ValueError: If ``frame_rate`` is not finite or is not strictly positive.
+            ValueError: If the scaled product overflows to infinity for extreme inputs.
+
+        Examples:
+            >>> BaseTracker._compute_maximum_frames_without_update(30, 30.0)
+            30
+            >>> BaseTracker._compute_maximum_frames_without_update(30, 60.0)
+            60
+            >>> BaseTracker._compute_maximum_frames_without_update(3, 15.0)
+            2
+            >>> BaseTracker._compute_maximum_frames_without_update(0, 30.0)
+            0
+        """
+        if lost_track_buffer < 0:
+            raise ValueError("lost_track_buffer must be greater than or equal to 0")
+        if not math.isfinite(frame_rate) or frame_rate <= 0:
+            raise ValueError("frame_rate must be a finite positive value")
+        if lost_track_buffer == 0:
+            return 0
+        scaled = frame_rate / 30.0 * lost_track_buffer
+        if not math.isfinite(scaled):
+            raise ValueError("Scaled lost_track_buffer overflows: frame_rate / 30.0 * lost_track_buffer must be finite")
+        return max(1, math.ceil(scaled))
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Register subclass in the tracker registry if it defines tracker_id.

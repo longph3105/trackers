@@ -81,8 +81,8 @@ class BaseTracklet(ABC):
             it should be pruned.
         """
         if maximum_time_without_update is not None:
-            return tracklet.time_since_update_seconds < maximum_time_without_update
-        return tracklet.time_since_update < maximum_frames_without_update
+            return tracklet.time_since_update_seconds <= maximum_time_without_update
+        return tracklet.time_since_update <= maximum_frames_without_update
 
     @abstractmethod
     def predict(self, timing: PredictTiming = FIXED_RATE_TIMING) -> np.ndarray:
